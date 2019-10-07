@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
@@ -14,42 +13,68 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-var books []Book
-var client *mongo.Client
+var cliente *mongo.Client
 
-type Book struct {
-	ID     primitive.ObjectID `json:"id,omitempty"      bson: "id, omitempty"`
-	Isbn   string             `json: "isbn,omitempty"   bson: "isbn,omitempty"`
-	Title  string             `json: "title,omitempty"  bson: "title,omitempty"`
-	Author *Author            `json: "author,omitempty" bson: "author,omitempty"`
+// Author é uma classe de identificação do autor do livro.
+type Author struct {
+	ID        primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
+	Firstname string             `json:"firstname,omitempty" bson:"firstname,omitempty"`
+	Lastname  string             `json:"lastname,omitempty" bson:"lastname,omitempty"`
 }
 
-type Author struct {
-	FirstName string `json: "firstname,omitempty" bson: "firstname,omitempty"`
-	LastName  string `json: "lastname,omitempty"  bson: "astname,omitempty"`
+// Book é uma classe que identifica o livro e o escritor.
+type Book struct {
+	ID     primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
+	Isbn   string             `json:"isbn,omitempty"   bson:"isbn,omitempty"`
+	Title  string             `json:"title,omitempty"  bson:"title,omitempty"`
+	Author *Author            `json:"author,omitempty" bson:"author,omitempty"`
+}
+
+func main() {
+	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+	cliente, _ = mongo.Connect(context.TODO(), clientOptions)
+
+	router := mux.NewRouter()
+	router.HandleFunc("/api/books", getBooks).Methods("GET")
+	router.HandleFunc("/api/books/{id}", getBook).Methods("GET")
+	router.HandleFunc("/api/books", createBook).Methods("POST")
+	//router.HandleFunc("/api/books/{id}", updateBook).Methods("PUT")
+	//router.HandleFunc("/api/books/{id}", deleteBook).Methods("DELETE")
+
+	log.Fatal(http.ListenAndServe(":8080", router))
 }
 
 func getBook(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(books)
+	w.Header().Set("content-type", "application/json")
+
+	params := mux.Vars(r)
+
+	id, _ := primitive.ObjectIDFromHex(params["id"])
+
+	var book Book
+	collection := cliente.Database("BookStore").Collection("Books")
+	err := collection.FindOne(context.TODO(), Book{ID: id}).Decode(&book)
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{ "message": "` + err.Error() + `" }`))
+		return
+	}
+
+	json.NewEncoder(w).Encode(book)
 }
 
 func getBooks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	//params := mux.Vars(r)
 
 	var books []Book
-
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	client, _ := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:8080"))
-
-	collection := client.Database("BookStore").Collection("Books")
-
+	collection := cliente.Database("BookStore").Collection("Books")
+	ctx := context.TODO()
 	cursor, err := collection.Find(ctx, bson.M{})
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{ "message": "` + err.Error() + `"}`))
+		w.Write([]byte(`{ "message": "` + err.Error() + `" }`))
 		return
 	}
 
@@ -63,17 +88,11 @@ func getBooks(w http.ResponseWriter, r *http.Request) {
 
 	if err := cursor.Err(); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{ "message": "` + err.Error() + `"}`))
+		w.Write([]byte(`{ "message": "` + err.Error() + `" }`))
 		return
 	}
-	//for _, item := range books {
-	//	if item.ID == params["id"] {
-	//		json.NewEncoder(w).Encode(item)
-	//		return
-	//	}
-	//}
 
-	json.NewEncoder(w).Encode(&Book{})
+	json.NewEncoder(w).Encode(books)
 }
 
 func createBook(w http.ResponseWriter, r *http.Request) {
@@ -81,17 +100,15 @@ func createBook(w http.ResponseWriter, r *http.Request) {
 
 	var book Book
 	_ = json.NewDecoder(r.Body).Decode(&book)
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
-	client, _ := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:8080"))
 
-	collection := client.Database("BookStore").Collection("Books")
-	result, _ := collection.InsertOne(ctx, book)
+	collection := cliente.Database("BookStore").Collection("Books")
+	result, _ := collection.InsertOne(context.TODO(), book)
 
 	json.NewEncoder(w).Encode(result)
 }
 
 func updateBook(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	//w.Header().Set("Content-Type", "application/json")
 
 	//params := mux.Vars(r)
 
@@ -110,7 +127,7 @@ func updateBook(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteBook(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	//w.Header().Set("Content-Type", "application/json")
 	//
 	//params := mux.Vars(r)
 	//
@@ -122,30 +139,4 @@ func deleteBook(w http.ResponseWriter, r *http.Request) {
 	//}
 	//
 	//json.NewEncoder(w).Encode(books)
-}
-
-func main() {
-	//books = append(books, Book{ID: 1, Isbn: "123", Title: "First book",
-	//	Author: &Author{FirstName: "John", LastName: "Doe"}})
-	//
-	//books = append(books, Book{ID: 2, Isbn: "456", Title: "Second book",
-	//	Author: &Author{FirstName: "Johnathan", LastName: "Dude"}})
-	//
-	//books = append(books, Book{ID: 3, Isbn: "789", Title: "Third book",
-	//	Author: &Author{FirstName: "Joe", LastName: "Durelo"}})
-	//
-	//books = append(books, Book{ID: 4, Isbn: "147", Title: "Fourth book",
-	//	Author: &Author{FirstName: "James", LastName: "Gun"}})
-
-	//ctx, _ := context.WithTimeout(context.Background(), 10+time.Second)
-	//client, _ := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:8080"))
-
-	router := mux.NewRouter()
-	router.HandleFunc("/api/books", getBooks).Methods("GET")
-	//router.HandleFunc("/api/books/{id}", getBook).Methods("GET")
-	router.HandleFunc("/api/books", createBook).Methods("POST")
-	//router.HandleFunc("/api/books/{id}", updateBook).Methods("PUT")
-	//router.HandleFunc("/api/books/{id}", deleteBook).Methods("DELETE")
-
-	log.Fatal(http.ListenAndServe(":8080", router))
 }

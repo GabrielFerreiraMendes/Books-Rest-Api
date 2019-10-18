@@ -38,7 +38,7 @@ func main() {
 	router.HandleFunc("/api/books", getBooks).Methods("GET")
 	router.HandleFunc("/api/books/{id}", getBook).Methods("GET")
 	router.HandleFunc("/api/books", createBook).Methods("POST")
-	//router.HandleFunc("/api/books/{id}", updateBook).Methods("PUT")
+	router.HandleFunc("/api/books/{id}", updateBook).Methods("PUT")
 	//router.HandleFunc("/api/books/{id}", deleteBook).Methods("DELETE")
 
 	log.Fatal(http.ListenAndServe(":8080", router))
@@ -108,22 +108,20 @@ func createBook(w http.ResponseWriter, r *http.Request) {
 }
 
 func updateBook(w http.ResponseWriter, r *http.Request) {
-	//w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json")
 
-	//params := mux.Vars(r)
+	var book Book
+	collection := cliente.Database("BookStore").Collection("Books")
+	json.NewDecoder(r.Body).Decode(&book)
 
-	//for index, item := range books {
-	//	if item.ID == params["id"] {
-	//		var book Book
-	//
-	//		_ = json.NewDecoder(r.Body).Decode(&book)
-	//		book.ID = item.ID
-	//
-	//		books[index] = book
-	//		json.NewEncoder(w).Encode(book)
-	//		return
-	//	}
-	//}
+	item := bson.M{
+		"isbn":   book.Isbn,
+		"title":  book.Title,
+		"author": book.Author,
+	}
+
+	result := collection.FindOneAndUpdate(context.TODO(), bson.M{"_id": book.ID}, bson.M{"$set": item})
+	json.NewEncoder(w).Encode(result)
 }
 
 func deleteBook(w http.ResponseWriter, r *http.Request) {
